@@ -7,6 +7,7 @@
 * 	05/02:	完成
 * 	05/03:	「～のキーフレームに」の動作が間違っていたのを修正
 * 			プロファイル変更フレームに移動を追加
+* 	12/20:	指定フレーム数移動を追加
 * 
 *********************************************************************/
 #include <windows.h>
@@ -31,25 +32,34 @@
 #define ID_BTN_END    40014
 #define ID_BTN_FRST   40015
 #define ID_BTN_LAST   40016
+#define ID_BTN_GNUM   40017
+#define ID_BTN_BNUM   40018
+#define ID_EDIT_NUM   40019
 
-// チップテキスト
-#define TSTR_LSRK  "前のキーフレームに移動"
-#define TSTR_NSRK  "次のキーフレームに移動"
-#define TSTR_LMRK  "前のマークフレームに移動"
-#define TSTR_NMRK  "次のマークフレームに移動"
+// strings
+#define TSTR_LSRK    "前のキーフレームに移動"
+#define TSTR_NSRK    "次のキーフレームに移動"
+#define TSTR_LMRK    "前のマークフレームに移動"
+#define TSTR_NMRK    "次のマークフレームに移動"
 
-#define TSTR_LPRF  "前のプロファイルの変更フレームに移動"
-#define TSTR_NPRF  "次のプロファイルの変更フレームに移動"
-#define TSTR_LKEY  "前のキー設定フレームに移動"
-#define TSTR_NKEY  "次のキー設定フレームに移動"
-#define TSTR_LDEL  "前の優先間引き設定フレームに移動"
-#define TSTR_NDEL  "次の優先間引き設定フレームに移動"
-#define TSTR_LCPY  "前のコピー設定フレームに移動"
-#define TSTR_NCPY  "次のコピー設定フレームに移動"
-#define TSTR_STRT  "選択開始フレームに移動"
-#define TSTR_END   "選択終了フレームに移動"
-#define TSTR_FRST  "先頭のフレームに移動"
-#define TSTR_LAST  "最後のフレームに移動"
+#define TSTR_LPRF    "前のプロファイルの変更フレームに移動"
+#define TSTR_NPRF    "次のプロファイルの変更フレームに移動"
+#define TSTR_LKEY    "前のキー設定フレームに移動"
+#define TSTR_NKEY    "次のキー設定フレームに移動"
+#define TSTR_LDEL    "前の優先間引き設定フレームに移動"
+#define TSTR_NDEL    "次の優先間引き設定フレームに移動"
+#define TSTR_LCPY    "前のコピー設定フレームに移動"
+#define TSTR_NCPY    "次のコピー設定フレームに移動"
+#define TSTR_STRT    "選択開始フレームに移動"
+#define TSTR_END     "選択終了フレームに移動"
+#define TSTR_FRST    "先頭のフレームに移動"
+#define TSTR_LAST    "最後のフレームに移動"
+
+#define TSTR_GNUM    "指定フレーム進む"
+#define TSTR_BNUM    "指定フレーム戻る"
+#define TSTR_ENUM    "移動フレーム数"
+
+#define INIKEY_NUM1  "number1"
 
 // ボタンウィンドウハンドル
 HWND hNxtSrK,hLstSrK;
@@ -60,11 +70,13 @@ HWND hNxtDel,hLstDel;
 HWND hNxtCpy,hLstCpy;
 HWND hStart, hEnd;
 HWND hFirst, hLast;
+HWND hGoNUM, hBkNUM, hEdtNUM;
 
 
 // プロトタイプ
 static void CreateTooltip (HWND hwnd,HINSTANCE hinst,char *tipstr);
 static BOOL wm_filter_init(FILTER* fp);
+static BOOL wm_filter_exit(FILTER* fp);
 static BOOL go_next_flag(FILTER* fp,void *editp,UINT flag);
 static BOOL go_last_flag(FILTER* fp,void *editp,UINT flag);
 static BOOL go_first_frame(FILTER* fp,void *editp);
@@ -75,13 +87,15 @@ static BOOL go_last_sourcekey(FILTER* fp,void *editp);
 static BOOL go_next_sourcekey(FILTER* fp,void *editp);
 static BOOL go_last_profilechange(FILTER* fp,void *editp);
 static BOOL go_next_profilechange(FILTER* fp,void *editp);
+static BOOL go_num(FILTER *fp,void *editp);
+static BOOL go_back_num(FILTER *fp,void *editp);
 
 
 //----------------------------
 //	FILTER_DLL構造体
 //----------------------------
 char filter_name[] = "移動ツール";
-char filter_info[] = "移動ツール ver0.02 by MakKi";
+char filter_info[] = "移動ツール ver0.03 by MakKi";
 #define track_N 0
 #if track_N
 TCHAR *track_name[]   = { 0 };	// トラックバーの名前
@@ -101,7 +115,7 @@ FILTER_DLL filter = {
 	FILTER_FLAG_DISP_FILTER	|
 	FILTER_FLAG_WINDOW_SIZE |
 	FILTER_FLAG_EX_INFORMATION,
-	160,190,			// 設定ウインドウのサイズ
+	160,190+41,			// 設定ウインドウのサイズ
 	filter_name,		// フィルタの名前
 	track_N,        	// トラックバーの数
 #if track_N
@@ -145,8 +159,11 @@ EXTERN_C FILTER_DLL __declspec(dllexport) * __stdcall GetFilterTable( void )
 BOOL func_WndProc( HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, void *editp, FILTER *fp )
 {
 	switch(message){
-		case WM_FILTER_INIT:
+		case WM_FILTER_INIT:	// 初期化時
 			return wm_filter_init(fp);
+
+		case WM_FILTER_EXIT:	// 終了時
+			return wm_filter_exit(fp);
 
 		//---------------------------------------------ボタン動作
 		case WM_COMMAND:
@@ -198,6 +215,12 @@ BOOL func_WndProc( HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, void *
 
 				case ID_BTN_LAST:		// 最後のフレームに移動
 					return go_last_frame(fp,editp);
+
+				case ID_BTN_GNUM:		// 指定フレーム進む
+					return go_num(fp,editp);
+
+				case ID_BTN_BNUM:		// 指定フレーム戻る
+					return go_back_num(fp,editp);
 			}
 			break;
 
@@ -213,9 +236,57 @@ BOOL func_WndProc( HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, void *
 
 
 /*--------------------------------------------------------------------
+*	指定フレーム進む
+*-------------------------------------------------------------------*/
+static BOOL go_num(FILTER *fp,void *editp)
+{
+	char edit[8];
+	int  frame;
+	int  max;
+
+	GetWindowText(hEdtNUM,edit,8);
+	max   = fp->exfunc->get_frame_n(editp);
+	frame = fp->exfunc->get_frame(editp);
+	frame += atoi(edit);
+
+	if(frame >= max)
+		frame = max - 1;
+	else if(frame < 0)
+		frame = 0;
+
+	fp->exfunc->set_frame(editp,frame);
+
+	return TRUE;
+}
+
+/*--------------------------------------------------------------------
+*	指定フレーム戻る
+*-------------------------------------------------------------------*/
+static BOOL go_back_num(FILTER *fp,void *editp)
+{
+	char edit[8];
+	int  frame;
+	int  max;
+
+	GetWindowText(hEdtNUM,edit,8);
+	max   = fp->exfunc->get_frame_n(editp);
+	frame = fp->exfunc->get_frame(editp);
+	frame -= atoi(edit);
+
+	if(frame >= max)
+		frame = max - 1;
+	else if(frame < 0)
+		frame = 0;
+
+	fp->exfunc->set_frame(editp,frame);
+
+	return TRUE;
+}
+
+/*--------------------------------------------------------------------
 *	前のプロファイル変更フレームに移動
 *-------------------------------------------------------------------*/
-static BOOL go_last_profilechange(FILTER* fp,void *editp)
+static BOOL go_last_profilechange(FILTER *fp,void *editp)
 {
 	int  now;
 	int  config;	// プロファイル番号
@@ -249,7 +320,7 @@ static BOOL go_last_profilechange(FILTER* fp,void *editp)
 /*--------------------------------------------------------------------
 *	次のプロファイル変更フレームに移動
 *-------------------------------------------------------------------*/
-static BOOL go_next_profilechange(FILTER* fp,void *editp)
+static BOOL go_next_profilechange(FILTER *fp,void *editp)
 {
 	int  now,num;
 	int  config;	// プロファイル番号
@@ -284,7 +355,7 @@ static BOOL go_next_profilechange(FILTER* fp,void *editp)
 /*--------------------------------------------------------------------
 *	前のソースキーフレームに移動
 *-------------------------------------------------------------------*/
-static BOOL go_last_sourcekey(FILTER* fp,void *editp)
+static BOOL go_last_sourcekey(FILTER *fp,void *editp)
 {
 	int now;
 
@@ -304,7 +375,7 @@ static BOOL go_last_sourcekey(FILTER* fp,void *editp)
 /*--------------------------------------------------------------------
 *	次のソースキーフレームに移動
 *-------------------------------------------------------------------*/
-static BOOL go_next_sourcekey(FILTER* fp,void *editp)
+static BOOL go_next_sourcekey(FILTER *fp,void *editp)
 {
 	int now;
 	int num;
@@ -326,7 +397,7 @@ static BOOL go_next_sourcekey(FILTER* fp,void *editp)
 /*--------------------------------------------------------------------
 *	go_first_frame()	先頭のフレームに移動
 *-------------------------------------------------------------------*/
-static BOOL go_first_frame(FILTER* fp,void *editp)
+static BOOL go_first_frame(FILTER *fp,void *editp)
 {
 	// 表示フレーム更新
 	fp->exfunc->set_frame(editp,0);
@@ -447,6 +518,9 @@ static BOOL go_next_flag(FILTER* fp,void *editp,UINT flag)
 static BOOL wm_filter_init(FILTER* fp)
 {
 	HICON hicon;
+	HFONT hFont;
+	int   num;
+	char  cnum[8];
 
 	// ボタンを作る
 	hLstSrK = CreateWindow("BUTTON",NULL,WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON |BS_ICON,
@@ -485,6 +559,17 @@ static BOOL wm_filter_init(FILTER* fp)
 	hLast   = CreateWindow("BUTTON",NULL,WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON |BS_ICON,
 				113,128, 36,36,fp->hwnd, (HMENU)ID_BTN_LAST, fp->dll_hinst,NULL);
 
+	hBkNUM  = CreateWindow("BUTTON",NULL,WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON |BS_ICON,
+				5,  169, 36,36,fp->hwnd, (HMENU)ID_BTN_BNUM, fp->dll_hinst,NULL);
+	hGoNUM  = CreateWindow("BUTTON",NULL,WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON |BS_ICON,
+				41 ,169, 36,36,fp->hwnd, (HMENU)ID_BTN_GNUM, fp->dll_hinst,NULL);
+
+	hEdtNUM = CreateWindowEx(WS_EX_CLIENTEDGE,"EDIT",NULL,WS_VISIBLE|WS_CHILD|ES_AUTOHSCROLL|ES_NUMBER|ES_RIGHT,
+				81 ,177, 64,19,fp->hwnd, (HMENU)ID_EDIT_NUM, fp->dll_hinst,NULL);
+	hFont   = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+	SendMessage(hEdtNUM, WM_SETFONT, (WPARAM)hFont, 0);
+	SendMessage(hEdtNUM, EM_SETLIMITTEXT, (WPARAM)7, 0);
+
 	// アイコンイメージ割り当て
 	hicon = LoadIcon(fp->dll_hinst,"iconLstSrK");
 	SendMessage(hLstSrK,BM_SETIMAGE,IMAGE_ICON,(LPARAM)hicon);
@@ -522,6 +607,11 @@ static BOOL wm_filter_init(FILTER* fp)
 	hicon = LoadIcon(fp->dll_hinst,"iconLast");
 	SendMessage(hLast,BM_SETIMAGE,IMAGE_ICON,(LPARAM)hicon);
 
+	hicon = LoadIcon(fp->dll_hinst,"iconBkNUM");
+	SendMessage(hBkNUM,BM_SETIMAGE,IMAGE_ICON,(LPARAM)hicon);
+	hicon = LoadIcon(fp->dll_hinst,"iconGoNUM");
+	SendMessage(hGoNUM,BM_SETIMAGE,IMAGE_ICON,(LPARAM)hicon);
+
 	// チップテキスト割り当て
 	CreateTooltip(hLstSrK,fp->dll_hinst,TSTR_LSRK);
 	CreateTooltip(hNxtSrK,fp->dll_hinst,TSTR_NSRK);
@@ -543,9 +633,30 @@ static BOOL wm_filter_init(FILTER* fp)
 	CreateTooltip(hEnd,  fp->dll_hinst,TSTR_END);
 	CreateTooltip(hLast, fp->dll_hinst,TSTR_LAST);
 
+	CreateTooltip(hBkNUM, fp->dll_hinst,TSTR_BNUM);
+	CreateTooltip(hGoNUM, fp->dll_hinst,TSTR_GNUM);
+	CreateTooltip(hEdtNUM,fp->dll_hinst,TSTR_ENUM);
+
+	// 移動フレーム数の初期値
+	num = fp->exfunc->ini_load_int(fp,INIKEY_NUM1,30);
+	wsprintf(cnum,"%d",num);
+	SetWindowText(hEdtNUM,cnum);
+
 	return FALSE;
 }
 
+/*--------------------------------------------------------------------
+*	filter_exit()	初期化
+*-------------------------------------------------------------------*/
+static BOOL wm_filter_exit(FILTER* fp)
+{
+	char cnum[8];
+
+	GetWindowText(hEdtNUM,cnum,8);
+	fp->exfunc->ini_save_int(fp,INIKEY_NUM1,atoi(cnum));
+
+	return FALSE;
+}
 
 /*--------------------------------------------------------------------
 *	CreateTooltip()	ツールチップを作る

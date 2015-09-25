@@ -17,6 +17,8 @@ iconStart   ICON  "i_start.ico"
 iconEnd     ICON  "i_end.ico"
 iconFirst   ICON  "i_first.ico"
 iconLast    ICON  "i_last.ico"
+iconGoNUM   ICON  "i_gonum.ico"
+iconBkNUM   ICON  "i_backnum.ico"
 
 
 
@@ -24,8 +26,8 @@ iconLast    ICON  "i_last.ico"
 //  VERSION INFO
 //
 VS_VIRSION_INFO VERSIONINFO
- FILEVERSION    0,0,2,0
- PRODUCTVERSION 0,0,2
+ FILEVERSION    0,0,3,0
+ PRODUCTVERSION 0,0,3
  FILEFLAGSMASK  0x3FL
  FILEFLAGS      0x0L
  FILEOS         VOS__WINDOWS32
@@ -38,12 +40,12 @@ VS_VIRSION_INFO VERSIONINFO
 		{
 			VALUE "Comments",         "アイディア提供：正明さん\0"
             VALUE "FileDescription",  "移動ツール Plugin for AviUtl 0.98\0"
-            VALUE "FileVersion",      "0.2.0.0\0"
+            VALUE "FileVersion",      "0.3.0.0\0"
             VALUE "InternalName",     "MoveTool\0"
             VALUE "LegalCopyright",   "(C) MakKi\0"
             VALUE "OriginalFilename", "move.aup\0"
             VALUE "ProductName",      "移動ツール Plugin\0"
-            VALUE "ProductVersion",   "0.2.0\0"
+            VALUE "ProductVersion",   "0.3.0\0"
 		}
 	}
     BLOCK "VarFileInfo"
